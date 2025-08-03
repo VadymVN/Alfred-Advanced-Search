@@ -1,2 +1,10 @@
 # Python dependencies required for Alfred Advanced Search project
 # Install using: pip install -r requirements.txt
+
+# Development dependencies
+mypy>=1.0.0     # Для проверки типов
+pytest>=7.0.0   # Для тестирования
+black>=23.0.0   # Для форматирования кода
+flake8>=6.0.0   # Для линтинга
+
+# Note: pathlib and typing are built-in modules in Python 3.x
