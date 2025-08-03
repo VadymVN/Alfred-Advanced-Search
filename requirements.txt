@@ -1,0 +1,2 @@
+# Python dependencies required for Alfred Advanced Search project
+# Install using: pip install -r requirements.txt
