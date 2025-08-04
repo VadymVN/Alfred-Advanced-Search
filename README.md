@@ -122,7 +122,7 @@ alfred-advanced-search/
 ├── search.py
 ├── utils.py
 ├── docs/
-│   └── Интеграция Python and Alfred.md
+│   └── Alfred_Advanced_Search_Workflow_EN.md
 ├── README.md
 └── requirements.txt
 ```
