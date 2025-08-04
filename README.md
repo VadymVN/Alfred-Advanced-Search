@@ -3,38 +3,41 @@
 ## Purpose
 
 Speed‑up navigation and scoped file search in Alfred while **excluding apps and hidden files**. Hotkey `ff` launches the workflow and the current scope determines how deep you search.
-
----
+  
 
 ## How It Works
 
-1. **Global trigger** – press `` to start a search across every *visible* file and folder (no `.dot` items, no `.app` bundles).
-2. **Drill‑in** – hit `` on a highlighted **folder** to open that folder *inside Alfred*.
-3. **List contents** – once inside a folder, type `` *(keyword, then Return)* to list **all immediate files and sub‑folders** so you can see what lives there even if you don’t remember any names.
-4. **Move up one level** – type `` *(keyword, then Return)* to jump to the **parent directory** and reset Alfred’s scope accordingly.
-5. **Scoped search** – start typing inside the scoped folder to fuzzy‑match items **only within that directory tree**.
-6. **Open items** –
-   - Folder + `` → drill deeper.
-   - File   + `` → open with default app.
-7. **Reveal in Finder** – select any item and press `` (Command‑Return) to reveal it in Finder (uses Alfred’s default File Action).
-8. **Reset scope** – hit `ff` again at any time to pop back to a global search.
+1. **Global trigger** – press `ff` to start a search across every *visible* file and folder (no `.dot` items, no `.app` bundles).
 
----
+2. **Drill‑in** – hit `Return` on a highlighted **folder** to open that folder *inside Alfred*.
+
+3. **List contents** – once inside a folder, type `ls` *(keyword, then Return)* to list **all immediate files and sub‑folders** so you can see what lives there even if you don’t remember any names.
+
+4. **Move up one level** – type `cd..` *(keyword, then Return)* to jump to the **parent directory** and reset Alfred’s scope accordingly.
+
+5. **Scoped search** – start typing inside the scoped folder to fuzzy‑match items **only within that directory tree**.
+
+6. **Open items** –
+
+- Folder + `Return` → drill deeper.
+
+- File + `Return` → open with default app.
+
+1. **Reveal in Finder** – select any item and press  (Options (Alt)‑Return) to reveal it in Finder (uses Alfred’s default File Action).
 
 ## Feature Matrix
 
-| Context      | Key / Input       | Action                           |
+| Context | Key / Input | Action 
 | ------------ | ----------------- | -------------------------------- |
-| Anywhere     | `ff`              | Global search (filesystem root). |
-| Folder       | `Return`          | Enter folder; set scope.         |
-| Folder       | `⌘ + Return`      | Open folder in Finder.           |
-| Folder scope | `ls` + `Return`   | List every item in that folder.  |
-| Folder scope | `cd..` + `Return` | Move **up** to parent folder.    |
-| Scoped dir   | Type query        | Fuzzy search inside scope.       |
-| File         | `Return`          | Open file (default app).         |
-| File         | `⌘ + Return`      | Reveal file in Finder.           |
+| Anywhere | `ff` | Global search (filesystem root). |
+| Folder | `Return` | Enter folder; set scope. |
+| Folder | `⌥ + Return` | Open folder in Finder. |
+| Folder scope | `ls` + `Return` | List every item in that folder. |
+| Folder scope | `cd..` + `Return` | Move **up** to parent folder. |
+| Scoped dir | Type query | Fuzzy search inside scope. |
+| File | `Return` | Open file (default app). |
+| File | `⌥ + Return` | Reveal file in Finder. |
 
-> **Tip** — Re‑entering `ff` from any scope jumps back to the full‑disk context, saving you from tapping multiple `cd..` steps.
 
 ---
 
@@ -56,25 +59,42 @@ Speed‑up navigation and scoped file search in Alfred while **excluding apps an
 ### Keywords `ls` & `cd..`
 
 ```python
-# inside search.py (pseudo‑implementation)
-if scope and query in {"ls", "cd.."}:
-    if query == "ls":
-        for item in listdir(scope):
-            if item.startswith('.') or item.endswith('.app'):
-                continue  # skip hidden & app bundles
-            wf.add_item(title=item.name,
-                        subtitle="📄 File" if item.is_file() else "📂 Folder",
-                        arg=item.path,
-                        valid=True,
-                        type='file' if item.is_file() else 'default')
-    else:  # cd..
-        parent = Path(scope).parent
-        wf.add_item(title=parent.name or "/",
-                    subtitle="Parent directory",
-                    arg=str(parent),
-                    valid=True,
-                    type='default',
-                    icon="icon.png")
+# inside search.py (current implementation)
+def create_item(path: Path, is_file: bool = True) -> Dict[str, str]:
+    """Creates item with proper metadata for Alfred."""
+    variables = {
+        "is_dir": "0" if is_file else "1"
+    }
+    
+    item = {
+        "title": path.name or str(path),
+        "subtitle": f"📄 {path.parent}" if is_file else f"📂 {path.parent}",
+        "arg": str(path),
+        "type": "file" if is_file else "default",
+        "valid": True,
+        "variables": variables
+    }
+
+    if not is_file:
+        item["variables"]["scope"] = str(path)
+        item["autocomplete"] = str(path)
+        
+    return item
+
+# Handle ls command
+def list_directory(scope: Path) -> List[Dict[str, str]]:
+    items = []
+    for item in scope.iterdir():
+        if not should_exclude(item.name):  # Skip hidden & .app
+            items.append(create_item(item, item.is_file()))
+    return items
+
+# Handle cd.. command
+def handle_cd_up(scope: Path) -> List[Dict[str, str]]:
+    parent = scope.parent
+    item = create_item(parent, is_file=False)
+    item["subtitle"] = "⬆️ Parent directory"
+    return [item]
 ```
 
 *Result:* `ls` reveals children; `cd..` offers one result — the parent folder — so pressing `Return` scopes Alfred to it.
@@ -124,7 +144,7 @@ Use this sequence to explore a folder when you’re unsure about its contents, a
 | 4‑b  | Type `cd..` → `Return`              | Parent scope                     | Go **up** one directory.                                                  |
 | 4‑c  | Select a file → `Return`            | —                                | Open file with its default app.                                           |
 | 4‑d  | Any item → ``                       | —                                | Reveal selected item in Finder.                                           |
-| 5    | Type `ff` again                     | Global scope restored            | Jump back out to whole‑disk search when finished.                         |
+|                        |
 
 > **Why both **``** and **``**?**\
 > Together they emulate a mini‑shell inside Alfred: `ls` to inspect, `cd..` to ascend, all without leaving the keyboard.
