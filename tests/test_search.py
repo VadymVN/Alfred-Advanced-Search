@@ -15,48 +15,48 @@ from search import (
     EXCLUDED_PATTERNS,
 )
 
-# Фикстуры для тестов
+# Test fixtures
 @pytest.fixture
 def temp_directory(tmp_path):
-    """Создает временную директорию с тестовыми файлами."""
-    # Создаем обычные файлы
+    """Creates a temporary directory with test files."""
+    # Create regular files
     (tmp_path / "test1.txt").touch()
     (tmp_path / "test2.py").touch()
     
-    # Создаем скрытый файл
+    # Create hidden file
     (tmp_path / ".hidden").touch()
     
-    # Создаем .app файл
+    # Create .app file
     app_dir = tmp_path / "TestApp.app"
     app_dir.mkdir()
     
-    # Создаем поддиректорию с файлами
+    # Create subdirectory with files
     subdir = tmp_path / "subdir"
     subdir.mkdir()
     (subdir / "subfile.txt").touch()
     
     return tmp_path
 
-# Тесты для функции should_exclude
+# Tests for should_exclude function
 def test_should_exclude_hidden_files():
-    """Тест исключения скрытых файлов."""
+    """Test hidden files exclusion."""
     assert should_exclude(".hidden") == True
     assert should_exclude("normal.txt") == False
 
 def test_should_exclude_app_bundles():
-    """Тест исключения .app бандлов."""
+    """Test .app bundles exclusion."""
     assert should_exclude("TestApp.app") == True
     assert should_exclude("test.txt") == False
 
 def test_should_exclude_patterns():
-    """Тест всех паттернов исключения."""
-    assert should_exclude(".test") == True  # Скрытый файл
-    assert should_exclude("test.app") == True  # App бандл
-    assert should_exclude("test.txt") == False  # Обычный файл
+    """Test all exclusion patterns."""
+    assert should_exclude(".test") == True  # Hidden file
+    assert should_exclude("test.app") == True  # App bundle
+    assert should_exclude("test.txt") == False  # Regular file
 
-# Тесты для функции create_item
+# Tests for create_item function
 def test_create_item_file():
-    """Тест создания элемента для файла."""
+    """Test creating item for file."""
     path = Path("/test/file.txt")
     item = create_item(path, is_file=True)
     
@@ -67,7 +67,7 @@ def test_create_item_file():
     assert item["valid"] == True
 
 def test_create_item_directory():
-    """Тест создания элемента для директории."""
+    """Test creating item for directory."""
     path = Path("/test/dir")
     item = create_item(path, is_file=False)
     
@@ -78,7 +78,7 @@ def test_create_item_directory():
     assert item["valid"] == True
 
 def test_create_item_root():
-    """Тест создания элемента для корневой директории."""
+    """Test creating item for root directory."""
     path = Path("/")
     item = create_item(path, is_file=False)
     
@@ -86,17 +86,17 @@ def test_create_item_root():
     assert item["subtitle"].startswith("📂")
     assert item["arg"] == "/"
 
-# Тесты для функции list_directory
+# Tests for list_directory function
 def test_list_directory_contents(temp_directory):
-    """Тест листинга содержимого директории."""
+    """Test directory contents listing."""
     items = list_directory(temp_directory)
     
-    # Проверяем количество видимых файлов (исключая .hidden и .app)
+    # Check number of visible files (excluding .hidden and .app)
     assert len(items) == 3  # test1.txt, test2.py, subdir
 
 def test_list_directory_permission_error(tmp_path):
-    """Тест обработки ошибки доступа к директории."""
-    # Создаем директорию без прав доступа
+    """Test directory access error handling."""
+    # Create directory without access rights
     no_access_dir = tmp_path / "no_access"
     no_access_dir.mkdir()
     os.chmod(no_access_dir, 0o000)
@@ -106,33 +106,33 @@ def test_list_directory_permission_error(tmp_path):
     assert items[0]["title"] == "Permission denied"
     assert items[0]["valid"] == False
     
-    # Восстанавливаем права для очистки
+    # Restore permissions for cleanup
     os.chmod(no_access_dir, 0o755)
 
-# Тесты для функции search_files
+# Tests for search_files function
 def test_search_files_basic(temp_directory):
-    """Тест базового поиска файлов."""
+    """Test basic file search."""
     results = search_files("test", temp_directory)
-    assert len(results) == 2  # test1.txt и test2.py
+    assert len(results) == 2  # test1.txt and test2.py
 
 def test_search_files_case_insensitive(temp_directory):
-    """Тест поиска файлов без учета регистра."""
+    """Test case-insensitive file search."""
     results = search_files("TEST", temp_directory)
-    assert len(results) == 2  # должен найти test1.txt и test2.py
+    assert len(results) == 2  # should find test1.txt and test2.py
 
 def test_search_files_with_depth(temp_directory):
-    """Тест поиска файлов с ограничением глубины."""
+    """Test file search with depth limit."""
     results = search_files("subfile", temp_directory, depth=1)
-    assert len(results) == 1  # должен найти subfile.txt в поддиректории
+    assert len(results) == 1  # should find subfile.txt in subdirectory
 
 def test_search_files_empty_query(temp_directory):
-    """Тест поиска с пустым запросом."""
+    """Test search with empty query."""
     results = search_files("", temp_directory)
     assert len(results) == 0
 
-# Тесты для функции handle_cd_up
+# Tests for handle_cd_up function
 def test_handle_cd_up_normal():
-    """Тест перехода на уровень выше."""
+    """Test moving up one level."""
     current = Path("/test/directory")
     results = handle_cd_up(current)
     
@@ -141,7 +141,7 @@ def test_handle_cd_up_normal():
     assert results[0]["arg"] == "/test"
 
 def test_handle_cd_up_root():
-    """Тест перехода выше корневой директории."""
+    """Test moving up from root directory."""
     current = Path("/")
     results = handle_cd_up(current)
     
@@ -149,22 +149,22 @@ def test_handle_cd_up_root():
     assert results[0]["title"] == "/"
     assert results[0]["arg"] == "/"
 
-# Тесты интеграции с Alfred
+# Alfred integration tests
 def test_alfred_json_output(temp_directory, capsys):
-    """Тест формата вывода JSON для Alfred."""
-    # Подготавливаем тестовое окружение
+    """Test JSON output format for Alfred."""
+    # Prepare test environment
     os.environ['scope'] = str(temp_directory)
     sys.argv = ['search.py', 'test']
     
-    # Запускаем main()
+    # Run main()
     from search import main
     main()
     
-    # Получаем вывод
+    # Get output
     captured = capsys.readouterr()
     output = json.loads(captured.out)
     
-    # Проверяем структуру JSON
+    # Check JSON structure
     assert "items" in output
     assert isinstance(output["items"], list)
     for item in output["items"]:

@@ -8,14 +8,14 @@ from typing import List, Dict, Optional, Union
 from functools import lru_cache
 
 class FileSystemHelper:
-    """Класс для работы с файловой системой и метаданными."""
+    """Class for working with file system and metadata."""
     
     def __init__(self, use_spotlight: bool = True):
         self.use_spotlight = use_spotlight
         self._setup_spotlight() if use_spotlight else None
     
     def _setup_spotlight(self) -> None:
-        """Проверяет доступность Spotlight и его индекса."""
+        """Checks Spotlight availability and its index."""
         try:
             os.system('mdutil -s / > /dev/null 2>&1')
             self.spotlight_available = True
@@ -24,7 +24,7 @@ class FileSystemHelper:
 
     @lru_cache(maxsize=100)
     def get_file_metadata(self, file_path: Path) -> Dict[str, str]:
-        """Получает метаданные файла, кэширует результаты для производительности."""
+        """Gets file metadata, caches results for performance."""
         metadata = {
             "name": file_path.name,
             "path": str(file_path),
@@ -34,7 +34,7 @@ class FileSystemHelper:
         }
         
         if self.use_spotlight and self.spotlight_available and file_path.is_file():
-            # Добавляем метаданные из Spotlight для файлов
+            # Add metadata from Spotlight for files
             try:
                 import subprocess
                 cmd = ['mdls', '-name', 'kMDItemDisplayName', '-name', 'kMDItemKind', str(file_path)]
@@ -47,7 +47,7 @@ class FileSystemHelper:
         return metadata
 
     def _parse_spotlight_metadata(self, metadata_str: str) -> Dict[str, str]:
-        """Парсит вывод команды mdls."""
+        """Parses mdls command output."""
         metadata = {}
         for line in metadata_str.splitlines():
             if '=' not in line:
@@ -60,21 +60,21 @@ class FileSystemHelper:
         return metadata
 
 class SearchHelper:
-    """Класс для улучшенного поиска файлов."""
+    """Class for enhanced file search."""
     
     def __init__(self, fs_helper: FileSystemHelper):
         self.fs_helper = fs_helper
         
     def fuzzy_match(self, query: str, text: str) -> bool:
-        """Реализует нечеткий поиск."""
+        """Implements fuzzy search."""
         query = query.lower()
         text = text.lower()
         
-        # Простой случай - прямое вхождение
+        # Simple case - direct match
         if query in text:
             return True
             
-        # Нечеткий поиск для сложных случаев
+        # Fuzzy search for complex cases
         query_chars = list(query)
         text_pos = 0
         
@@ -87,17 +87,17 @@ class SearchHelper:
         return True
 
     def filter_by_pattern(self, items: List[Path], pattern: str) -> List[Path]:
-        """Фильтрует список файлов по паттерну."""
+        """Filters file list by pattern."""
         try:
             regex = re.compile(pattern, re.IGNORECASE)
             return [item for item in items if regex.search(item.name)]
         except re.error:
-            # Если паттерн не является валидным регулярным выражением,
-            # используем простой поиск подстроки
+            # If pattern is not a valid regular expression,
+            # use simple substring search
             return [item for item in items if pattern.lower() in item.name.lower()]
 
 class WorkflowHelper:
-    """Класс для работы с Alfred Workflow."""
+    """Class for working with Alfred Workflow."""
     
     @staticmethod
     def format_item(
@@ -109,7 +109,7 @@ class WorkflowHelper:
         icon: Optional[str] = None,
         text: Optional[Dict[str, str]] = None
     ) -> Dict[str, Union[str, bool, Dict]]:
-        """Форматирует элемент для вывода в Alfred."""
+        """Formats an item for Alfred output."""
         item = {
             "title": title,
             "subtitle": subtitle,
@@ -127,18 +127,18 @@ class WorkflowHelper:
 
     @staticmethod
     def get_scope() -> Path:
-        """Получает текущую область поиска из переменных окружения Alfred."""
+        """Gets current search scope from Alfred environment variables."""
         scope_str = os.getenv('scope', os.path.expanduser('~'))
         return Path(scope_str)
 
     @staticmethod
     def set_scope(path: Path) -> None:
-        """Устанавливает новую область поиска."""
+        """Sets new search scope."""
         os.environ['scope'] = str(path)
 
     @staticmethod
     def get_search_depth() -> float:
-        """Получает настроенную глубину поиска."""
+        """Gets configured search depth."""
         try:
             return float(os.getenv('SEARCH_DEPTH', 'inf'))
         except ValueError:

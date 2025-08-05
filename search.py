@@ -7,40 +7,40 @@ import sys
 from pathlib import Path
 from typing import List, Dict, Union, Literal
 
-# Константы
-SEARCH_DEPTH = 3  # Ограниченная глубина поиска по умолчанию
-MAX_RESULTS = 50  # Максимальное количество результатов
-EXCLUDED_PATTERNS = ['.', '.app']  # Паттерны для исключения файлов
-DIR_FLAG = "1"  # Флаг для директорий
-FILE_FLAG = "0"  # Флаг для файлов
+# Constants
+SEARCH_DEPTH = 3  # Default limited search depth
+MAX_RESULTS = 50  # Maximum number of results
+EXCLUDED_PATTERNS = ['.', '.app']  # File exclusion patterns
+DIR_FLAG = "1"  # Directory flag
+FILE_FLAG = "0"  # File flag
 COMMON_SEARCH_PATHS = [
     '~/Documents',
     '~/Downloads',
     '~/Desktop',
     '~/Projects',
     '~/Applications'
-]  # Популярные директории для поиска
+]  # Popular search directories
 
 def should_exclude(name: str) -> bool:
-    """Проверяет, нужно ли исключить файл/папку из результатов."""
+    """Checks if a file/folder should be excluded from results."""
     return name.startswith('.') or name.endswith('.app')
 
 def create_item(path: Path, is_file: bool = True) -> Dict[str, str]:
     """
-    Создает элемент для вывода в Alfred.
+    Creates an item for Alfred output.
     
     Args:
-        path (Path): Путь к файлу или директории
-        is_file (bool): Флаг, указывающий является ли путь файлом (True) или директорией (False)
+        path (Path): Path to file or directory
+        is_file (bool): Flag indicating if the path is a file (True) or directory (False)
     
     Returns:
-        Dict[str, str]: Словарь с информацией для Alfred, включая:
-            - title: Имя файла/директории
-            - subtitle: Путь к родительской директории с иконкой
-            - arg: Полный путь
-            - type: Тип элемента ('file' или 'default')
-            - valid: Доступность элемента
-            - variables: Дополнительные переменные (is_dir, scope для директорий)
+        Dict[str, str]: Dictionary with Alfred information, including:
+            - title: File/directory name
+            - subtitle: Parent directory path with icon
+            - arg: Full path
+            - type: Item type ('file' or 'default')
+            - valid: Item availability
+            - variables: Additional variables (is_dir, scope for directories)
     """
     variables = {
         "is_dir": FILE_FLAG if is_file else DIR_FLAG
@@ -63,7 +63,7 @@ def create_item(path: Path, is_file: bool = True) -> Dict[str, str]:
     return item
 
 def list_directory(scope: Path) -> List[Dict[str, str]]:
-    """Показывает содержимое текущей директории."""
+    """Shows contents of the current directory."""
     items = []
     try:
         for item in scope.iterdir():
@@ -79,13 +79,13 @@ def list_directory(scope: Path) -> List[Dict[str, str]]:
     return items
 
 def search_files(query: str, scope: Path, depth: float = SEARCH_DEPTH, max_depth: int = 5, max_results: int = 50) -> List[Dict[str, str]]:
-    """Ищет файлы по запросу с учетом глубины поиска."""
-    if not query:  # Если запрос пустой, возвращаем пустой список
+    """Searches for files by query considering search depth."""
+    if not query:  # If query is empty, return empty list
         return []
         
     items = []
     current_depth = 0
-    visited = set()  # Для отслеживания уже посещенных директорий
+    visited = set()  # For tracking already visited directories
     
     def walk(current_path: Path, current_depth: int):
         if current_depth > depth or current_depth > max_depth or len(items) >= max_results:
@@ -97,9 +97,9 @@ def search_files(query: str, scope: Path, depth: float = SEARCH_DEPTH, max_depth
                 return
             visited.add(real_path)
             
-            # Пропускаем проверку текущей директории, так как мы ищем только внутри неё
+            # Skip checking current directory as we only search inside it
             
-            # Проверяем содержимое только текущей директории
+            # Check contents of current directory only
             for item in current_path.iterdir():
                 if should_exclude(item.name):
                     continue
@@ -109,7 +109,7 @@ def search_files(query: str, scope: Path, depth: float = SEARCH_DEPTH, max_depth
                     if len(items) >= max_results:
                         return
                 
-                # Рекурсивно обходим только поддиректории текущей директории
+                # Recursively traverse only subdirectories of current directory
                 if item.is_dir() and not item.is_symlink() and item.parent == scope:
                     walk(item, current_depth + 1)
                     if len(items) >= max_results:
@@ -122,21 +122,21 @@ def search_files(query: str, scope: Path, depth: float = SEARCH_DEPTH, max_depth
     return items
 
 def handle_cd_up(scope: Path) -> List[Dict[str, str]]:
-    """Обрабатывает команду cd.. для перехода на уровень выше."""
+    """Handles cd.. command to move up one level."""
     parent = scope.parent
-    item = create_item(parent, is_file=False)  # Используем существующую функцию
-    item["subtitle"] = "⬆️ Parent directory"  # Переопределяем subtitle
+    item = create_item(parent, is_file=False)  # Use existing function
+    item["subtitle"] = "⬆️ Parent directory"  # Override subtitle
     return [item]
 
 def get_search_paths() -> List[Path]:
-    """Возвращает список директорий для поиска."""
+    """Returns list of directories for search."""
     paths = []
-    # Добавляем текущую директорию из переменной окружения Alfred
+    # Add current directory from Alfred environment variable
     scope_str = os.getenv('scope')
     if scope_str:
         paths.append(Path(scope_str))
     
-    # Добавляем популярные директории
+    # Add popular directories
     for path_str in COMMON_SEARCH_PATHS:
         path = Path(os.path.expanduser(path_str))
         if path.exists() and path.is_dir():
@@ -146,22 +146,22 @@ def get_search_paths() -> List[Path]:
 
 def main():
     try:
-        # Получаем запрос от Alfred
+        # Get query from Alfred
         query = sys.argv[1] if len(sys.argv) > 1 else ""
         
-        # Получаем текущую область поиска
+        # Get current search scope
         scope = Path(os.getenv('scope', os.path.expanduser('~')))
         
-        # Инициализируем список результатов
+        # Initialize results list
         items = []
         
-        # Обрабатываем специальные команды
+        # Handle special commands
         if query == "ls":
             items = list_directory(scope)
         elif query == "cd..":
             items = handle_cd_up(scope)
         else:
-            # Обычный поиск файлов
+            # Regular file search
             search_paths = get_search_paths()
             for path in search_paths:
                 if len(items) >= MAX_RESULTS:
@@ -172,20 +172,20 @@ def main():
                 except (PermissionError, OSError):
                     continue
         
-        # Если нет результатов, показываем сообщение
+        # If no results, show message
         if not items:
             items = [{
                 "title": "No matches found",
                 "subtitle": f"No items matching '{query}' in search paths",
-                "arg": str(scope),  # Добавляем arg для совместимости
+                "arg": str(scope),  # Add arg for compatibility
                 "valid": False
             }]
         
-        # Выводим результаты в формате JSON для Alfred
+        # Output results in JSON format for Alfred
         print(json.dumps({"items": items[:MAX_RESULTS]}))
         
     except KeyboardInterrupt:
-        # Обрабатываем прерывание поиска
+        # Handle search interruption
         print(json.dumps({
             "items": [{
                 "title": "Search interrupted",
