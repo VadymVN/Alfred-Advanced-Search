@@ -14,6 +14,8 @@
 | **In scope** | `find <pattern>` | Deep recursive search by filename |
 | **In scope** | `grep <pattern>` | Search text inside files |
 | **In scope** | `tree` | Visualize directory structure |
+| **In scope** | `recent` / `recent 7` | Files modified in last N days (default: 1) |
+| **In scope** | `size` / `size 10m` | Largest files, optionally above threshold |
 | **Any scope** | Type string | Fuzzy search within current scope |
 | **File** | **Return** | Open file in default application |
 | **File** | **⌥+Return** | Reveal file in Finder |
@@ -184,8 +186,12 @@ See [README.md](../README.md) for the full list of settings.
 8. Type `find readme` → deep search for files named "readme".
 9. Type `grep TODO` → searches file contents for "TODO".
 10. Type `tree` → shows visual directory structure.
-11. Press `⌘+Return` → opens Terminal at location.
-12. Press `^+Return` → copies path to clipboard.
+11. Type `recent` → shows files modified in last 24h.
+12. Type `recent 7` → files modified in last 7 days.
+13. Type `size` → shows largest files.
+14. Type `size 10m` → files larger than 10MB.
+15. Press `⌘+Return` → opens Terminal at location.
+16. Press `^+Return` → copies path to clipboard.
 
 ---
 
@@ -198,7 +204,7 @@ All logic lives in `search.py`:
 - Logging (to `search.log`)
 - Fuzzy matching with relevance scoring
 - `fd` integration with Python fallback
-- All commands: `ls`, `cd..`, `find`, `grep`, `tree`
+- All commands: `ls`, `cd..`, `find`, `grep`, `tree`, `recent`, `size`
 
 ### Search Scoring
 

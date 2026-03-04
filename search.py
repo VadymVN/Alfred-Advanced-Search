@@ -16,7 +16,7 @@ from typing import List, Dict, Optional, Tuple
 DEFAULT_SETTINGS = {
     "search_depth": 3,
     "max_results": 50,
-    "excluded_patterns": [".", ".app"],
+    "excluded_patterns": [".*", "*.app"],
     "search_paths": [
         "~/Documents",
         "~/Downloads",
@@ -27,6 +27,7 @@ DEFAULT_SETTINGS = {
     "use_fd": True,
     "grep_max_depth": 2,
     "tree_max_depth": 2,
+    "respect_ignore_files": False,
 }
 
 DIR_FLAG = "1"
@@ -92,8 +93,21 @@ EXCLUDED_PATTERNS = SETTINGS["excluded_patterns"]
 
 
 def should_exclude(name: str) -> bool:
-    """Checks if a file/folder should be excluded from results."""
-    return name.startswith(".") or name.endswith(".app")
+    """Checks if a file/folder should be excluded based on excluded_patterns.
+
+    Supported patterns:
+      .*         — dotfiles (starts with .)
+      *.app      — by extension (ends with .app)
+      node_modules — exact name match
+    """
+    for pattern in EXCLUDED_PATTERNS:
+        if pattern.startswith("*.") and name.endswith(pattern[1:]):
+            return True
+        elif pattern.endswith("*") and name.startswith(pattern[:-1]):
+            return True
+        elif "*" not in pattern and name == pattern:
+            return True
+    return False
 
 
 def fuzzy_match(query: str, text: str) -> bool:
@@ -194,6 +208,8 @@ def create_item(path: Path, is_file: bool = True) -> Dict:
         },
     }
 
+    item["icon"] = {"type": "fileicon", "path": str(path)}
+
     if not is_file:
         item["variables"]["scope"] = str(path)
         item["autocomplete"] = str(path)
@@ -287,10 +303,10 @@ def _search_with_fd(
 ) -> Optional[List[Dict]]:
     """Searches using fd command for better performance."""
     try:
-        cmd = [
-            "fd",
-            "--hidden=false",
-            "--no-ignore",
+        cmd = ["fd", "--hidden=false"]
+        if not SETTINGS.get("respect_ignore_files", False):
+            cmd.append("--no-ignore")
+        cmd += [
             "--max-depth",
             str(depth),
             "--max-results",
@@ -353,10 +369,10 @@ def handle_find(pattern: str, scope: Path) -> List[Dict]:
     # Try fd first (no depth limit)
     if _has_fd():
         try:
-            cmd = [
-                "fd",
-                "--hidden=false",
-                "--no-ignore",
+            cmd = ["fd", "--hidden=false"]
+            if not SETTINGS.get("respect_ignore_files", False):
+                cmd.append("--no-ignore")
+            cmd += [
                 "--max-results",
                 str(MAX_RESULTS),
                 pattern,
@@ -504,6 +520,128 @@ def handle_tree(scope: Path) -> List[Dict]:
     return items
 
 
+def handle_recent(args: str, scope: Path) -> List[Dict]:
+    """Shows recently modified files. Usage: recent [days]."""
+    days = 1
+    if args.strip():
+        try:
+            days = int(args.strip())
+        except ValueError:
+            return [{
+                "title": "Usage: recent [days]",
+                "subtitle": "Show files modified in last N days (default: 1)",
+                "valid": False,
+            }]
+
+    logger.info("recent %d days in %s", days, scope)
+
+    # Try fd first
+    if _has_fd():
+        try:
+            cmd = ["fd", "--hidden=false", "--type", "f"]
+            if not SETTINGS.get("respect_ignore_files", False):
+                cmd.append("--no-ignore")
+            cmd += [
+                "--changed-within", f"{days}d",
+                "--max-results", str(MAX_RESULTS),
+                ".", str(scope),
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            if result.returncode in (0, 1) and result.stdout.strip():
+                items = []
+                for line in result.stdout.strip().splitlines():
+                    if not line:
+                        continue
+                    path = Path(line)
+                    if should_exclude(path.name):
+                        continue
+                    items.append(create_item(path, is_file=True))
+                # Sort by mtime newest first
+                items.sort(
+                    key=lambda x: _safe_mtime(Path(x["arg"])), reverse=True
+                )
+                return items[:MAX_RESULTS]
+        except (subprocess.TimeoutExpired, OSError) as e:
+            logger.warning("fd recent failed: %s", e)
+
+    # Python fallback
+    cutoff = time.time() - days * 86400
+    items = []
+    for root, dirs, files in os.walk(str(scope)):
+        dirs[:] = [d for d in dirs if not should_exclude(d)]
+        for fname in files:
+            if should_exclude(fname):
+                continue
+            fpath = Path(root) / fname
+            try:
+                if fpath.stat().st_mtime >= cutoff:
+                    items.append(create_item(fpath, is_file=True))
+                    if len(items) >= MAX_RESULTS * 2:
+                        break
+            except OSError:
+                continue
+        if len(items) >= MAX_RESULTS * 2:
+            break
+
+    items.sort(key=lambda x: _safe_mtime(Path(x["arg"])), reverse=True)
+    return items[:MAX_RESULTS]
+
+
+def _safe_mtime(path: Path) -> float:
+    """Returns mtime or 0 on error."""
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def handle_size(args: str, scope: Path) -> List[Dict]:
+    """Shows largest files. Usage: size [threshold like 10m, 100k]."""
+    threshold = 0
+    if args.strip():
+        threshold = _parse_size(args.strip())
+        if threshold < 0:
+            return [{
+                "title": "Usage: size [threshold]",
+                "subtitle": "Examples: size 10m, size 100k, size 1g",
+                "valid": False,
+            }]
+
+    logger.info("size threshold=%d in %s", threshold, scope)
+    items = []
+
+    for root, dirs, files in os.walk(str(scope)):
+        dirs[:] = [d for d in dirs if not should_exclude(d)]
+        for fname in files:
+            if should_exclude(fname):
+                continue
+            fpath = Path(root) / fname
+            try:
+                st = fpath.stat()
+                if st.st_size >= threshold:
+                    items.append((st.st_size, create_item(fpath, is_file=True)))
+            except OSError:
+                continue
+
+    items.sort(key=lambda x: x[0], reverse=True)
+    return [item for _, item in items[:MAX_RESULTS]]
+
+
+def _parse_size(s: str) -> int:
+    """Parses size string like '10m', '100k', '1g'. Returns -1 on error."""
+    s = s.lower().strip()
+    multipliers = {"k": 1024, "m": 1024 ** 2, "g": 1024 ** 3}
+    if s[-1] in multipliers:
+        try:
+            return int(float(s[:-1]) * multipliers[s[-1]])
+        except ValueError:
+            return -1
+    try:
+        return int(s)
+    except ValueError:
+        return -1
+
+
 # --- Search paths ---
 
 
@@ -544,6 +682,10 @@ def main():
             items = handle_find(query[5:].strip(), scope)
         elif query.startswith("grep "):
             items = handle_grep(query[5:].strip(), scope)
+        elif query == "recent" or query.startswith("recent "):
+            items = handle_recent(query[6:].strip() if " " in query else "", scope)
+        elif query == "size" or query.startswith("size "):
+            items = handle_size(query[4:].strip() if " " in query else "", scope)
         else:
             # Regular file search with fuzzy matching
             search_paths = get_search_paths()

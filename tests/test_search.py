@@ -16,10 +16,13 @@ from search import (
     handle_find,
     handle_grep,
     handle_tree,
+    handle_recent,
+    handle_size,
     fuzzy_match,
     match_score,
     load_settings,
     _format_size,
+    _parse_size,
 )
 
 
@@ -369,3 +372,104 @@ def test_alfred_tree_command(temp_directory, capsys):
     output = json.loads(captured.out)
     assert "items" in output
     assert len(output["items"]) > 0
+
+
+# --- should_exclude with custom patterns ---
+
+
+@patch("search.EXCLUDED_PATTERNS", [".*", "*.app", "node_modules"])
+def test_should_exclude_custom_patterns():
+    assert should_exclude(".hidden") is True
+    assert should_exclude(".git") is True
+    assert should_exclude("TestApp.app") is True
+    assert should_exclude("node_modules") is True
+    assert should_exclude("normal.txt") is False
+    assert should_exclude("myapp") is False
+
+
+@patch("search.EXCLUDED_PATTERNS", ["*.log", "*.tmp"])
+def test_should_exclude_extension_patterns():
+    assert should_exclude("debug.log") is True
+    assert should_exclude("cache.tmp") is True
+    assert should_exclude("readme.md") is False
+
+
+# --- handle_recent ---
+
+
+@patch("search._has_fd", return_value=False)
+def test_handle_recent_basic(mock_fd, temp_directory):
+    """Recent should find files modified within the last day."""
+    results = handle_recent("", temp_directory)
+    names = [r["title"] for r in results]
+    assert "test1.txt" in names
+    assert "test2.py" in names
+
+
+@patch("search._has_fd", return_value=False)
+def test_handle_recent_with_days(mock_fd, temp_directory):
+    """Recent with days parameter should work."""
+    results = handle_recent("7", temp_directory)
+    assert len(results) > 0
+
+
+@patch("search._has_fd", return_value=False)
+def test_handle_recent_invalid_arg(mock_fd, temp_directory):
+    results = handle_recent("abc", temp_directory)
+    assert len(results) == 1
+    assert results[0]["valid"] is False
+
+
+# --- handle_size ---
+
+
+@patch("search._has_fd", return_value=False)
+def test_handle_size_basic(mock_fd, temp_directory):
+    """Size should return files sorted largest first."""
+    results = handle_size("", temp_directory)
+    assert len(results) > 0
+    # All results should be files
+    for r in results:
+        assert r["type"] == "file"
+
+
+@patch("search._has_fd", return_value=False)
+def test_handle_size_with_threshold(mock_fd, temp_directory):
+    """Size with high threshold should return fewer results."""
+    results = handle_size("1g", temp_directory)
+    assert len(results) == 0  # No files > 1GB in temp dir
+
+
+def test_handle_size_invalid_threshold(temp_directory):
+    results = handle_size("abc", temp_directory)
+    assert len(results) == 1
+    assert results[0]["valid"] is False
+
+
+# --- _parse_size ---
+
+
+def test_parse_size():
+    assert _parse_size("10m") == 10 * 1024 ** 2
+    assert _parse_size("100k") == 100 * 1024
+    assert _parse_size("1g") == 1024 ** 3
+    assert _parse_size("500") == 500
+    assert _parse_size("abc") == -1
+
+
+# --- create_item icon ---
+
+
+def test_create_item_has_icon():
+    path = Path("/test/file.txt")
+    item = create_item(path, is_file=True)
+    assert "icon" in item
+    assert item["icon"]["type"] == "fileicon"
+    assert item["icon"]["path"] == str(path)
+
+
+def test_create_item_dir_has_icon():
+    path = Path("/test/dir")
+    item = create_item(path, is_file=False)
+    assert "icon" in item
+    assert item["icon"]["type"] == "fileicon"

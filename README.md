@@ -29,6 +29,8 @@ Speed-up navigation and scoped file search in Alfred while **excluding apps and 
 | Folder scope | `find <pattern>` | Deep recursive search by filename (no depth limit) |
 | Folder scope | `grep <pattern>` | Search inside text files (2 levels deep) |
 | Folder scope | `tree` | Visualize directory structure (2 levels deep) |
+| Folder scope | `recent` / `recent 7` | Files modified in last N days (default: 1) |
+| Folder scope | `size` / `size 10m` | Largest files, optionally above threshold |
 | Scoped dir | Type query | Fuzzy search within current scope |
 | File | `Return` | Open file with default app |
 | File | `⌥+Return` | Reveal file in Finder |
@@ -60,7 +62,7 @@ Settings are stored in `settings.json` in the Alfred workflow data directory (`$
 {
   "search_depth": 3,
   "max_results": 50,
-  "excluded_patterns": [".", ".app"],
+  "excluded_patterns": [".*", "*.app"],
   "search_paths": [
     "~/Documents",
     "~/Downloads",
@@ -70,7 +72,8 @@ Settings are stored in `settings.json` in the Alfred workflow data directory (`$
   ],
   "use_fd": true,
   "grep_max_depth": 2,
-  "tree_max_depth": 2
+  "tree_max_depth": 2,
+  "respect_ignore_files": false
 }
 ```
 
@@ -78,11 +81,12 @@ Settings are stored in `settings.json` in the Alfred workflow data directory (`$
 |---|---|---|
 | `search_depth` | `3` | Max directory depth for regular search |
 | `max_results` | `50` | Maximum number of results returned |
-| `excluded_patterns` | `[".", ".app"]` | Patterns to exclude (dotfiles, .app bundles) |
+| `excluded_patterns` | `[".*", "*.app"]` | Glob patterns to exclude (`.*` dotfiles, `*.app` bundles, `node_modules` exact) |
 | `search_paths` | See above | Directories to search in global mode |
 | `use_fd` | `true` | Use `fd` if installed |
 | `grep_max_depth` | `2` | Max depth for `grep` command |
 | `tree_max_depth` | `2` | Max depth for `tree` command |
+| `respect_ignore_files` | `false` | If `true`, fd respects `.gitignore`/`.fdignore` |
 
 ## Installation
 
@@ -101,7 +105,7 @@ alfred-advanced-search/
 ├── search.py              # Main script (search, commands, config)
 ├── tests/
 │   ├── conftest.py        # Test path setup
-│   └── test_search.py     # 39 tests
+│   └── test_search.py     # 50 tests
 ├── docs/
 │   └── Alfred_Advanced_Search_Workflow_EN.md  # Alfred setup guide
 ├── README.md
