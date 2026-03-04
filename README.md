@@ -2,152 +2,122 @@
 
 ## Purpose
 
-Speed‑up navigation and scoped file search in Alfred while **excluding apps and hidden files**. Hotkey `ff` launches the workflow and the current scope determines how deep you search.
-  
+Speed-up navigation and scoped file search in Alfred while **excluding apps and hidden files**. Hotkey `ff` launches the workflow. Supports fuzzy matching, deep search, content search, and tree visualization.
 
-## How It Works
+## Features
 
-1. **Global trigger** – press `ff` to start a search across every *visible* file and folder (no `.dot` items, no `.app` bundles).
+- **Fuzzy search** — type partial names (`tst` finds `test1.txt`)
+- **Relevance sorting** — exact > prefix > substring > fuzzy matches
+- **`fd` integration** — 5-10x faster search when [`fd`](https://github.com/sharkdp/fd) is installed (automatic fallback to Python)
+- **New commands** — `find`, `grep`, `tree` alongside existing `ls` and `cd..`
+- **File metadata** — size and modification date shown in subtitles
+- **Modifier keys** — `⌘+Return` opens Terminal, `^+Return` copies path
+- **Configurable** — `settings.json` for depth, max results, excluded patterns, etc.
+- **Logging** — debug log written to Alfred workflow data directory
 
-2. **Drill‑in** – hit `Return` on a highlighted **folder** to open that folder *inside Alfred*.
+## Commands
 
-3. **List contents** – once inside a folder, type `ls` *(keyword, then Return)* to list **all immediate files and sub‑folders** so you can see what lives there even if you don’t remember any names.
+| Context | Key / Input | Action |
+|---|---|---|
+| Anywhere | `ff` | Global search (filesystem root) |
+| Folder | `Return` | Enter folder; set scope |
+| Folder | `⌥+Return` | Reveal in Finder |
+| Folder | `⌘+Return` | Open in Terminal |
+| Any item | `^+Return` | Copy path to clipboard |
+| Folder scope | `ls` | List all contents of current folder (dirs first) |
+| Folder scope | `cd..` | Move up to parent directory |
+| Folder scope | `find <pattern>` | Deep recursive search by filename (no depth limit) |
+| Folder scope | `grep <pattern>` | Search inside text files (2 levels deep) |
+| Folder scope | `tree` | Visualize directory structure (2 levels deep) |
+| Scoped dir | Type query | Fuzzy search within current scope |
+| File | `Return` | Open file with default app |
+| File | `⌥+Return` | Reveal file in Finder |
 
-4. **Move up one level** – type `cd..` *(keyword, then Return)* to jump to the **parent directory** and reset Alfred’s scope accordingly.
+## Search Behavior
 
-5. **Scoped search** – start typing inside the scoped folder to fuzzy‑match items **only within that directory tree**.
+### Fuzzy Matching
 
-6. **Open items** –
+The search uses a 4-tier scoring system:
 
-- Folder + `Return` → drill deeper.
+| Priority | Match Type | Example (`query` → `filename`) |
+|---|---|---|
+| 1 (best) | Exact | `test` → `test` |
+| 2 | Prefix | `test` → `testing.py` |
+| 3 | Substring | `est` → `testing.py` |
+| 4 | Fuzzy | `tst` → `test.py` |
 
-- File + `Return` → open with default app.
+Results are sorted by match quality — exact matches always appear first.
 
-1. **Reveal in Finder** – select any item and press  (Options (Alt)‑Return) to reveal it in Finder (uses Alfred’s default File Action).
+### `fd` Integration
 
-## Feature Matrix
+If [`fd`](https://github.com/sharkdp/fd) is installed (`brew install fd`), it is used automatically for file search, providing significantly faster results. If `fd` is not available, the workflow falls back to Python's `os.walk`. You can disable `fd` in settings.
 
-| Context | Key / Input | Action 
-| ------------ | ----------------- | -------------------------------- |
-| Anywhere | `ff` | Global search (filesystem root). |
-| Folder | `Return` | Enter folder; set scope. |
-| Folder | `⌥ + Return` | Open folder in Finder. |
-| Folder scope | `ls` + `Return` | List every item in that folder. |
-| Folder scope | `cd..` + `Return` | Move **up** to parent folder. |
-| Scoped dir | Type query | Fuzzy search inside scope. |
-| File | `Return` | Open file (default app). |
-| File | `⌥ + Return` | Reveal file in Finder. |
+## Configuration
 
+Settings are stored in `settings.json` in the Alfred workflow data directory (`$alfred_workflow_data/settings.json`). If the file doesn't exist, defaults are used.
 
----
+```json
+{
+  "search_depth": 3,
+  "max_results": 50,
+  "excluded_patterns": [".", ".app"],
+  "search_paths": [
+    "~/Documents",
+    "~/Downloads",
+    "~/Desktop",
+    "~/Projects",
+    "~/Applications"
+  ],
+  "use_fd": true,
+  "grep_max_depth": 2,
+  "tree_max_depth": 2
+}
+```
+
+| Parameter | Default | Description |
+|---|---|---|
+| `search_depth` | `3` | Max directory depth for regular search |
+| `max_results` | `50` | Maximum number of results returned |
+| `excluded_patterns` | `[".", ".app"]` | Patterns to exclude (dotfiles, .app bundles) |
+| `search_paths` | See above | Directories to search in global mode |
+| `use_fd` | `true` | Use `fd` if installed |
+| `grep_max_depth` | `2` | Max depth for `grep` command |
+| `tree_max_depth` | `2` | Max depth for `tree` command |
 
 ## Installation
 
 1. **Import** `alfred-advanced-search.alfredworkflow` into Alfred.
-2. Optionally create a **virtual environment** for Python ≥ 3.9:
+2. Ensure **Python >= 3.9** is available.
+3. (Optional) Install `fd` for faster search:
    ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate  # Windows: .venv\Scripts\activate
-   pip install -r requirements.txt
+   brew install fd
    ```
-3. In Alfred → *Workflows* → *Advanced Search* set **Keyword** to `ff`.
-
----
-
-## Implementation Notes
-
-### Keywords `ls` & `cd..`
-
-```python
-# inside search.py (current implementation)
-def create_item(path: Path, is_file: bool = True) -> Dict[str, str]:
-    """Creates item with proper metadata for Alfred."""
-    variables = {
-        "is_dir": "0" if is_file else "1"
-    }
-    
-    item = {
-        "title": path.name or str(path),
-        "subtitle": f"📄 {path.parent}" if is_file else f"📂 {path.parent}",
-        "arg": str(path),
-        "type": "file" if is_file else "default",
-        "valid": True,
-        "variables": variables
-    }
-
-    if not is_file:
-        item["variables"]["scope"] = str(path)
-        item["autocomplete"] = str(path)
-        
-    return item
-
-# Handle ls command
-def list_directory(scope: Path) -> List[Dict[str, str]]:
-    items = []
-    for item in scope.iterdir():
-        if not should_exclude(item.name):  # Skip hidden & .app
-            items.append(create_item(item, item.is_file()))
-    return items
-
-# Handle cd.. command
-def handle_cd_up(scope: Path) -> List[Dict[str, str]]:
-    parent = scope.parent
-    item = create_item(parent, is_file=False)
-    item["subtitle"] = "⬆️ Parent directory"
-    return [item]
-```
-
-*Result:* `ls` reveals children; `cd..` offers one result — the parent folder — so pressing `Return` scopes Alfred to it.
-
-### Recursion Depth Options
-
-| Mode                | `SEARCH_DEPTH`                                  | Use Case                                                               | Pros                             | Cons                                 |
-| ------------------- | ----------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------- | ------------------------------------ |
-| Unlimited (default) | `∞`                                             | Full‑disk search; most flexible.                                       | Finds anything.                  | Large result set; marginally slower. |
-| Fixed number        | `n` (e.g. `3`)                                  | Keep traversal shallow in global mode.                                 | Faster; avoids deep system dirs. | May miss deeply nested files.        |
-| Dynamic             | `0` in global → unlimited,`1` in scoped folders | Global search thorough, but scoped search stays in *current* dir only. | Predictable; fewer surprises.    | Adds config complexity.              |
-
-Set `SEARCH_DEPTH` in *Workflow Environment Variables* to switch modes.
-
-### Spotlight Dependency
-
-Alfred relies on the **macOS metadata (Spotlight) index** for file discovery; keeping Spotlight healthy ensures identical results to Alfred’s default engine. ([alfredapp.com](https://www.alfredapp.com/help/kb/search-your-mac-with-alfred/))
-
----
+4. In Alfred → *Workflows* → *Advanced Search* set **Keyword** to `ff`.
 
 ## Repository Layout
 
 ```text
 alfred-advanced-search/
-├── search.py
-├── utils.py
+├── search.py              # Main script (search, commands, config)
+├── tests/
+│   ├── conftest.py        # Test path setup
+│   └── test_search.py     # 39 tests
 ├── docs/
-│   └── Alfred_Advanced_Search_Workflow_EN.md
+│   └── Alfred_Advanced_Search_Workflow_EN.md  # Alfred setup guide
 ├── README.md
 └── requirements.txt
 ```
 
-The Markdown reference file is accessible in Cursor via `@file`, and all external docs can be pulled with `@Web` or `@Docs` links.
+## Development
 
----
+```bash
+# Run tests
+python -m pytest tests/ -v
 
-## Step‑by‑Step Workflow with `ls` and `cd..`
+# Install dev dependencies
+pip install -r requirements.txt
+```
 
-Use this sequence to explore a folder when you’re unsure about its contents, and navigate back up if needed:
+## Logging
 
-| Step | Keys / Input                        | Alfred State                     | Purpose                                                                   |
-| ---- | ----------------------------------- | -------------------------------- | ------------------------------------------------------------------------- |
-| 1    | `ff`                                | Global scope                     | Launch Advanced Search.                                                   |
-| 2    | Start typing folder name → `Return` | Folder highlighted → **scoped**  | Enter the target folder. Alfred now limits all queries to this directory. |
-| 3    | Type `ls` → `Return`                | Items list (files & sub‑folders) | View **every** visible child item.                                        |
-| 4‑a  | Select a sub‑folder → `Return`      | Deeper scope                     | Drill further and repeat `ls` or search by name.                          |
-| 4‑b  | Type `cd..` → `Return`              | Parent scope                     | Go **up** one directory.                                                  |
-| 4‑c  | Select a file → `Return`            | —                                | Open file with its default app.                                           |
-| 4‑d  | Any item → ``                       | —                                | Reveal selected item in Finder.                                           |
-|                        |
-
-> **Why both **``** and **``**?**\
-> Together they emulate a mini‑shell inside Alfred: `ls` to inspect, `cd..` to ascend, all without leaving the keyboard.
-
-
-
+Debug logs are written to `search.log` in the Alfred workflow data directory. Useful for troubleshooting search issues, `fd` integration, and permission errors.
